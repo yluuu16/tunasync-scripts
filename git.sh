@@ -75,6 +75,10 @@ function checkout_repo() {
     readarray -t urls <<<"$urls_str"
     local -i i
     for ((i=0;i<${#paths[@]};i++)); do
+      # ignore empty .gitmodules
+      if [[ "${paths[$i]}" == "" ]]; then
+        continue
+      fi
       local git_path=$repo_dir_no_git/${paths[$i]}.git
       mkdir -p $git_path
       git_sync_recursive ${urls[$i]} $git_path
