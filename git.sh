@@ -10,6 +10,20 @@ fi
 
 TMPDIR=${TMPDIR:-"/tmp"}
 
+MIRROR_BASE_URL=${MIRROR_BASE_URL:-"https://mirrors.tuna.tsinghua.edu.cn/git/"}
+WORKING_DIR_BASE=${WORKING_DIR_BASE:-"/data/mirrors/git/"}
+GENERATED_SCRIPT=${GENERATED_SCRIPT:-"/data/mirrors/git/qemu/qemu.sh"}
+
+if [[ ! -z "$RECURSIVE" ]]; then
+  echo "#!/usr/bin/env bash" > $GENERATED_SCRIPT.tmp
+fi
+
+function script_append() {
+if [[ ! -z "$RECURSIVE" ]]; then
+  echo "$1" >> $GENERATED_SCRIPT.tmp
+fi
+}
+
 depth=0
 
 function echon() {
@@ -75,13 +89,26 @@ function checkout_repo() {
     readarray -t urls <<<"$urls_str"
     local -i i
     for ((i=0;i<${#paths[@]};i++)); do
+      local path=${paths[$i]}
       # ignore empty .gitmodules
-      if [[ "${paths[$i]}" == "" ]]; then
+      if [[ "$path" == "" ]]; then
         continue
       fi
-      local git_path=$repo_dir_no_git/${paths[$i]}.git
+      local git_path=$repo_dir_no_git/$path.git
       mkdir -p $git_path
+      local mirror_url=$(echo $git_path | sed "s#$WORKING_DIR_BASE#$MIRROR_BASE_URL#")
+      script_append "cat >>.git/config <<EOF"
+      script_append "[submodule \"$path\"]"
+      script_append "	active = true"
+      script_append "	url = $mirror_url"
+      script_append "EOF"
+      script_append "mkdir -p $path"
+      script_append "git clone $mirror_url $path"
+      script_append "git submodule init $path"
+      script_append "git submodule update $path"
+      script_append "pushd $path"
       git_sync_recursive ${urls[$i]} $git_path
+      script_append "popd"
     done
   fi
 }
@@ -105,6 +132,17 @@ function git_sync_recursive() {
   depth=$(($depth-1))
 }
 
+path=$(basename $TUNASYNC_WORKING_DIR)
+path_no_git=${path%%.git}
+mirror_url=$(echo $TUNASYNC_WORKING_DIR | sed "s#$WORKING_DIR_BASE#$MIRROR_BASE_URL#")
+script_append "mkdir -p $path_no_git"
+script_append "git clone $mirror_url $path_no_git"
+script_append "pushd $path_no_git"
 git_sync_recursive $TUNASYNC_UPSTREAM_URL $TUNASYNC_WORKING_DIR
+script_append "popd"
+
+if [[ ! -z "$RECURSIVE" ]]; then
+  mv $GENERATED_SCRIPT.tmp $GENERATED_SCRIPT
+fi
 
 echo "Total size is" $(numfmt --to=iec $total_size)
