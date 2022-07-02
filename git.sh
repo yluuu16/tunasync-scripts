@@ -147,6 +147,7 @@ script_append "mkdir -p $path_no_git"
 script_append "git clone $mirror_url $path_no_git"
 script_append "pushd $path_no_git"
 git_sync_recursive $TUNASYNC_UPSTREAM_URL $TUNASYNC_WORKING_DIR
+script_append "git submodule absorbgitdirs"
 script_append "popd"
 
 if [[ ! -z "$RECURSIVE" ]]; then
