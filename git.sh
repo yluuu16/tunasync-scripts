@@ -69,13 +69,18 @@ function git_sync() {
 function checkout_repo() {
   local repo_dir="$1"
   local work_tree="$2"
+  local commit="$3"
   echon "Checkout $repo_dir to $work_tree"
   rm -rf $work_tree
-  git clone "$repo_dir" --single-branch "$work_tree"
+  git clone "$repo_dir" "$work_tree"
   local ret=$?
   if [[ $ret -ne 0 ]]; then
     echon "git clone failed with rc=$ret"
     return $ret
+  fi
+  if [[ ! -z "$commit" ]]; then
+    echon "Worktree $work_tree switch to commit $commit"
+    git -C $work_tree checkout $commit
   fi
 
   local repo_dir_no_git=${repo_dir%%.git}
@@ -94,6 +99,7 @@ function checkout_repo() {
       if [[ "$path" == "" ]]; then
         continue
       fi
+      local commit=$(git -C $work_tree submodule status $path | cut -d ' ' -f 1 | cut -d '-' -f 2)
       local git_path=$repo_dir_no_git/$path.git
       mkdir -p $git_path
       local mirror_url=$(echo $git_path | sed "s#$WORKING_DIR_BASE#$MIRROR_BASE_URL#")
@@ -107,7 +113,7 @@ function checkout_repo() {
       script_append "git submodule init $path"
       script_append "git submodule update $path"
       script_append "pushd $path"
-      git_sync_recursive ${urls[$i]} $git_path
+      git_sync_recursive ${urls[$i]} $git_path $commit
       script_append "popd"
     done
   fi
@@ -117,6 +123,8 @@ function git_sync_recursive() {
   depth=$(($depth+1))
   local upstream=$1
   local working_dir=$2
+  # it is ok that commit=""
+  local commit=$3
   git_sync $1 $2
   local ret=$?
   if [[ $ret -ne 0 ]]; then
@@ -127,7 +135,7 @@ function git_sync_recursive() {
   if [[ ! -z "$RECURSIVE" ]]; then
     working_dir_name=$(basename $2)
     working_dir_name_no_git=${working_dir_name%%.git}
-    checkout_repo $working_dir $TMPDIR/$working_dir_name_no_git
+    checkout_repo $working_dir $TMPDIR/$working_dir_name_no_git $commit
   fi
   depth=$(($depth-1))
 }
